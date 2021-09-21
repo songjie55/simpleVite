@@ -4,33 +4,47 @@
 const Koa = require('koa2')
 const fs = require('fs');
 const path = require('path')
-const rewriteImport=require('./utils/index.js')
+const rewriteImport = require('./utils/index.js')
 const app = new Koa()
 app.use(async (ctx) => {
-    const {url, query} = ctx
+    const {url} = ctx
+    // console.log(url)
     if (url === '/') {
         ctx.type = 'text/html';
         let content = fs.readFileSync('./home.html', 'utf-8')
+        //处理vue中在webpack和nodejs环境下的process变量
+        content = content.replace('<script',
+            `
+            <script>
+            window.process={env:{NODE_ENV:'dev'}}
+            </script>
+            <script
+            `
+        )
         ctx.body = content
     } else if (url.endsWith('.js')) {
         //js文件处理
-        //第一步
-        console.log(url)
         const p = path.resolve(__dirname, url.slice(1))
         // const p = path.join(__dirname, url.slice(0))
         const content = fs.readFileSync(p, 'utf-8');
         ctx.type = 'application/javascript';
-        ctx.body = content;
+        // ctx.body = content;
         //1.main.js文件已经被拦截并处理成type为module的script文件返回给前端
         //2.在type已经是module的script脚本(main.js)中用es6模块语法import和export能发起请求到服务端拿取静态文件，再次触发上面的逻辑
         //3.所以被main或者他的子级用es module方式引用的的依赖包不需要其他处理了
 
+        //处理项目中引用依赖包node_module的文件 把文件里面的内容通过正则修改成/@modules，这里只做了js文件的修改
+        ctx.body = rewriteImport(content);
 
-        //上面只是处理简单的js文件还有项目中引用依赖包node_module的文件需要处理
-        // 第二步
-        //把 import vue from 'vue'给修改
-
-
+    } else if (url.startsWith('/@modules')) {
+        //把上面的/@modules的文件引入，这里需要去读每个依赖包的package.json文件中的es module的入口，就是package.json中的module属性
+        const modulePath = path.join(__dirname, 'node_modules', url.replace('@modules/', ''));//依赖包的真实路径
+        const packagePath = path.join(modulePath, '/package.json')//package文件的真实路径
+        const config = require(packagePath).module//真实引入文件的路径
+        const res = fs.readFileSync(modulePath + '/' + config, 'utf-8')
+        // console.log(modulePath + '/' + config)
+        ctx.type = 'application/javascript';
+        ctx.body = rewriteImport(res)
     }
 })
 app.listen(3000, () => {

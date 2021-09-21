@@ -3,7 +3,7 @@ function rewriteImport (content) {
     return content.replace(/ from ['|"]([^'"]+)['|"]/g, function (s0, s1) {
         // . ../ / 这3种开头的都是相对路径
         if (s1[0] !== '.' && s1[1] !== '/') {
-            return `from '/@modules/${s1}'`
+            return ` from '/@modules/${s1}'`
         } else {
             return s0
         }
